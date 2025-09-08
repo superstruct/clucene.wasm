@@ -39,14 +39,9 @@ find_package(Threads REQUIRED)
 INCLUDE (CheckPthread)
 INCLUDE (CheckAtomicFunctions)
 
-find_package(ZLIB)
-IF ( ZLIB_FOUND )
-  SET ( EXTRA_LIBS ${EXTRA_LIBS} ${ZLIB_LIBRARY} )
-ELSE ( ZLIB_FOUND )
-  MESSAGE( "ZLIB not found, using local: ${clucene-ext_SOURCE_DIR}/zlib" )
-  SET(ZLIB_INCLUDE_DIR ${clucene-ext_SOURCE_DIR}/zlib )
-  SET(ZLIB_LIBRARY ${clucene-ext_BINARY_DIR})
-ENDIF ( ZLIB_FOUND )
+# WASM: Use system zlib (dynamically loaded)
+find_package(ZLIB REQUIRED)
+SET ( EXTRA_LIBS ${EXTRA_LIBS} ${ZLIB_LIBRARY} )
 INCLUDE_DIRECTORIES( ${ZLIB_INCLUDE_DIR} )
 
 ########################################################################

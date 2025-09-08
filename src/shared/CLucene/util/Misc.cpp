@@ -34,13 +34,13 @@
 #include "CLucene/util/dirent.h" //if we have dirent, then the native one will be used
 
 //for zlib...
-#include "zlib.h"
-#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__)
-#  include <fcntl.h>
-#  include <io.h>
-#  define SET_BINARY_MODE(file) setmode(fileno(file), O_BINARY)
+#ifdef __EMSCRIPTEN__
+  // Dynamic zlib loading for WASM
+  #include <zlib.h>
+  #define SET_BINARY_MODE(file)
 #else
-#  define SET_BINARY_MODE(file)
+  #include <zlib.h>
+  #define SET_BINARY_MODE(file)
 #endif
 #define CL_Z_DEFAULT_CHUNK 1024
 

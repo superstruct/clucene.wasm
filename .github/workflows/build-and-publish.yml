@@ -1,0 +1,249 @@
+name: Build and Publish CLucene.wasm
+
+on:
+  push:
+    branches: [wasm]
+    tags: ['v*']
+  pull_request:
+    branches: [wasm]
+
+env:
+  NODE_VERSION: '20'
+  EMSDK_VERSION: '3.1.71'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [release, simd, threading, fallback]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: wasm
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        registry-url: 'https://npm.pkg.github.com'
+    
+    - name: Cache Emscripten
+      id: cache-emsdk
+      uses: actions/cache@v4
+      with:
+        path: emsdk
+        key: emsdk-${{ env.EMSDK_VERSION }}-${{ runner.os }}
+    
+    - name: Setup Emscripten
+      if: steps.cache-emsdk.outputs.cache-hit != 'true'
+      run: |
+        git clone https://github.com/emscripten-core/emsdk.git
+        cd emsdk
+        ./emsdk install ${{ env.EMSDK_VERSION }}
+        ./emsdk activate ${{ env.EMSDK_VERSION }}
+    
+    - name: Activate Emscripten
+      run: |
+        cd emsdk
+        source ./emsdk_env.sh
+        echo "$PWD/upstream/emscripten" >> $GITHUB_PATH
+        echo "EMSDK=$PWD" >> $GITHUB_ENV
+        echo "EM_CONFIG=$PWD/.emscripten" >> $GITHUB_ENV
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential zlib1g-dev
+    
+    - name: Install Node.js dependencies
+      run: npm ci
+    
+    - name: Run linting
+      run: npm run lint
+    
+    - name: Run type checking
+      run: npm run typecheck
+    
+    - name: Build WASM variant
+      run: |
+        source emsdk/emsdk_env.sh
+        ./build-wasm.sh ${{ matrix.variant }}
+    
+    - name: Run tests
+      run: npm test
+    
+    - name: Run benchmarks
+      run: npm run benchmark
+      continue-on-error: true
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm-${{ matrix.variant }}
+        path: |
+          dist/clucene-${{ matrix.variant }}.wasm
+          dist/clucene-${{ matrix.variant }}.js
+        retention-days: 7
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: wasm
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+    
+    - name: Setup artifacts
+      run: |
+        mkdir -p dist/
+        cp artifacts/wasm-*/* dist/
+        ls -la dist/
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run integration tests
+      run: npm test
+    
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
+    
+    - name: Run browser tests
+      run: npm run test:browser
+
+  publish:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: wasm
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        registry-url: 'https://npm.pkg.github.com'
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+    
+    - name: Setup distribution files
+      run: |
+        mkdir -p dist/
+        cp artifacts/wasm-*/* dist/
+        
+        # Verify all required files are present
+        for variant in release simd threading fallback; do
+          if [[ ! -f "dist/clucene-${variant}.wasm" ]] || [[ ! -f "dist/clucene-${variant}.js" ]]; then
+            echo "Missing files for variant: ${variant}"
+            exit 1
+          fi
+        done
+        
+        ls -la dist/
+    
+    - name: Generate manifest with actual file sizes
+      run: |
+        node -e "
+        const fs = require('fs');
+        const path = require('path');
+        const manifest = JSON.parse(fs.readFileSync('dist/manifest.json', 'utf8'));
+        
+        for (const [variantName, variant] of Object.entries(manifest.variants)) {
+          const wasmFile = path.join('dist', variant.wasm);
+          const jsFile = path.join('dist', variant.js);
+          
+          if (fs.existsSync(wasmFile)) {
+            const wasmStats = fs.statSync(wasmFile);
+            const jsStats = fs.statSync(jsFile);
+            variant.size_bytes = wasmStats.size + jsStats.size;
+          }
+        }
+        
+        fs.writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, 2));
+        "
+    
+    - name: Update package.json version
+      run: |
+        # Extract version from git tag
+        VERSION=${GITHUB_REF#refs/tags/v}
+        npm version $VERSION --no-git-tag-version
+    
+    - name: Generate changelog
+      run: |
+        echo "# Changelog" > CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "## [${GITHUB_REF#refs/tags/v}] - $(date +'%Y-%m-%d')" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        git log --oneline --format="- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md 2>/dev/null || echo "- Initial release" >> CHANGELOG.md
+    
+    - name: Publish to GitHub Packages
+      run: npm publish
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/clucene-*.wasm
+          dist/clucene-*.js
+          dist/manifest.json
+        body_path: CHANGELOG.md
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: wasm
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run security audit
+      run: npm audit --audit-level moderate
+      continue-on-error: true
+    
+    - name: Check for known vulnerabilities
+      run: |
+        # Basic checks for common security issues
+        if grep -r "eval\|innerHTML\|document\.write" dist/ 2>/dev/null; then
+          echo "Warning: Potentially unsafe JavaScript patterns detected"
+        fi
+        
+        # Check for hardcoded secrets (basic patterns)
+        if grep -r "password\|secret\|key\|token" --exclude-dir=node_modules --exclude="*.md" . | grep -E "=|:"; then
+          echo "Warning: Potential secrets detected in code"
+        fi

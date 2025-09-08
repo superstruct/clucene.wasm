@@ -1,0 +1,91 @@
+{
+  "name": "@superstruct/clucene.wasm",
+  "version": "2.3.3.4-wasm.1",
+  "description": "CLucene full-text search engine compiled to WebAssembly",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "lib/",
+    "wasm/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./wasm": {
+      "import": "./dist/wasm-loader.js"
+    },
+    "./manifest": {
+      "import": "./dist/manifest.json"
+    }
+  },
+  "scripts": {
+    "build": "./build-wasm.sh release",
+    "build:all": "./build-wasm.sh release && ./build-wasm.sh simd && ./build-wasm.sh threading && ./build-wasm.sh fallback",
+    "build:release": "./build-wasm.sh release",
+    "build:simd": "./build-wasm.sh simd", 
+    "build:threading": "./build-wasm.sh threading",
+    "build:fallback": "./build-wasm.sh fallback",
+    "test": "vitest",
+    "test:browser": "playwright test",
+    "benchmark": "node benchmarks/run.js",
+    "lint": "eslint src/ --ext .js,.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf build-* dist/clucene-*.wasm dist/clucene-*.js",
+    "prepare": "npm run build:all"
+  },
+  "keywords": [
+    "search",
+    "lucene",
+    "fulltext",
+    "indexing",
+    "wasm",
+    "webassembly",
+    "superstruct"
+  ],
+  "author": "superstruct ltd",
+  "license": "Apache-2.0 OR LGPL-2.1-or-later",
+  "homepage": "https://github.com/superstruct/superstruct#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/superstruct/superstruct.git",
+    "directory": "clucene.wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/superstruct/superstruct/issues"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@superstruct/zlib-wasm": "^1.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

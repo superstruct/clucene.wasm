@@ -1,5 +1,6 @@
 /*------------------------------------------------------------------------------
 * Copyright (C) 2003-2006 Ben van Klinken and the CLucene Team
+* Copyright 2025 superstruct ltd, New Zealand
 *
 * Distributable under the terms of either the Apache License (Version 2.0) or
 * the GNU Lesser General Public License, as specified in the COPYING file.
@@ -30,7 +31,7 @@
 #include "CLucene/util/Misc.h"
 #include "CLucene/util/_MD5Digester.h"
 
-#ifdef LUCENE_FS_MMAP
+#if defined(LUCENE_FS_MMAP) && !defined(__EMSCRIPTEN__)
     #include "_MMapIndexInput.h"
 #endif
 
